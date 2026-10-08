@@ -1,136 +1,858 @@
-import express from "express";
-import cors from "cors";
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Harakat by Ibrokhim — огласовки и перевод арабского текста</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Alegreya:ital,wght@0,400;0,500;0,700;1,400&family=Alegreya+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
 
-const app = express();
-app.use(cors());
-app.use(express.json({ limit: "1mb" }));
+  :root {
+    --paper: #EFE6D6;
+    --paper-raised: #F7F1E4;
+    --ink: #23201B;
+    --ink-soft: #55503F;
+    --rule: #D9CBAA;
+    --rubric: #8C3324;
+    --rubric-soft: #B85B46;
+    --teal: #27524C;
+    --teal-soft: #3E6E66;
+    --gold: #A8863C;
+    color-scheme: light dark;
+  }
 
-const PORT = process.env.PORT || 3000;
-const API_KEY = process.env.ANTHROPIC_API_KEY;
-const MODEL = "claude-sonnet-4-6";
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --paper: #1B1712;
+      --paper-raised: #241F18;
+      --ink: #EDE4D2;
+      --ink-soft: #B9AF97;
+      --rule: #3B3428;
+      --rubric: #D97B62;
+      --rubric-soft: #E39E8B;
+      --teal: #6FA69B;
+      --teal-soft: #8FBDB3;
+      --gold: #C9A45E;
+    }
+  }
 
-if (!API_KEY) {
-  console.warn("ВНИМАНИЕ: переменная окружения ANTHROPIC_API_KEY не задана.");
-}
+  :root[data-theme="dark"] {
+    --paper: #1B1712;
+    --paper-raised: #241F18;
+    --ink: #EDE4D2;
+    --ink-soft: #B9AF97;
+    --rule: #3B3428;
+    --rubric: #D97B62;
+    --rubric-soft: #E39E8B;
+    --teal: #6FA69B;
+    --teal-soft: #8FBDB3;
+    --gold: #C9A45E;
+  }
 
-function buildPrompt(text) {
-  return (
-    "Ты эксперт по арабской грамматике, который объясняет материал ученику среднего уровня — просто, кратко, без лишнего. Дан арабский текст без огласовок (харакят).\n\n" +
-    'Текст: "' + text + '"\n\n' +
-    "Выполни:\n" +
-    "1. Расставь грамматически корректные огласовки на весь текст.\n" +
-    "2. Дай перевод ВСЕГО текста целиком на русский и на узбекский — ПО СМЫСЛУ, естественной фразой, как сказал бы носитель языка, а НЕ дословно слово-в-слово.\n" +
-    "3. Дай итоговый грамматический разбор (إعراب) всего предложения на арабском — МАКСИМУМ 1 короткое предложение, только самое важное (тип предложения, подлежащее и сказуемое). Без второстепенных деталей.\n" +
-    "4. Раздели текст на отдельные слова по порядку (без знаков препинания как отдельных элементов).\n" +
-    "5. Для каждого слова укажи только это, и ничего лишнего:\n" +
-    '   - "surface": слово с огласовками\n' +
-    '   - "translation_ru": краткий перевод на русский (1-3 слова)\n' +
-    '   - "translation_uz": краткий перевод на узбекский латиницей (1-3 слова)\n' +
-    '   - "grammar_ru": КОРОТКАЯ метка по-русски, 2-5 слов, НЕ предложение (например: "подлежащее, именительный падеж" или "глагол прошедшего времени")\n' +
-    '   - "grammar_uz": та же метка на узбекском (латиница), тоже 2-5 слов\n' +
-    '   - "irab": таркип (إعراب) ЭТОГО слова на арабском — МАКСИМАЛЬНО КОРОТКО, 2-4 слова, только суть (например: "فاعل مرفوع" или "فعل ماضٍ"), без длинных пояснений\n' +
-    '   - "plural": форма множественного числа с огласовками, если это существительное, иначе null\n' +
-    '   - "verb_forms": если это глагол — объект {"past","present","imperative","masdar"} с огласовками на арабском, иначе null\n\n' +
-    "Будь предельно краток везде, где это возможно без потери смысла — ученик должен понять с первого взгляда, без лишнего текста. Это также ускоряет ответ.\n\n" +
-    "Ответь ТОЛЬКО валидным JSON без пояснений и без markdown-разметки, в формате:\n" +
-    '{"translation_ru": "...", "translation_uz": "...", "irab_summary": "...", "words": [{"surface": "...", "translation_ru": "...", "translation_uz": "...", "grammar_ru": "...", "grammar_uz": "...", "irab": "...", "plural": null, "verb_forms": null}]}'
-  );
-}
+  * { box-sizing: border-box; }
 
-function buildDictPrompt(word) {
-  return (
-    "Ты арабско-русский/узбекский словарь для ученика среднего уровня. Дано слово на русском или узбекском языке.\n\n" +
-    'Слово: "' + word + '"\n\n' +
-    "Дай его арабский эквивалент — самое употребимое слово. Ответь ТОЛЬКО валидным JSON без пояснений и markdown, в формате:\n" +
-    '{"surface": "слово на арабском с огласовками", "translation_ru": "краткий перевод на русский", "translation_uz": "краткий перевод на узбекский латиницей", "grammar_ru": "короткая метка 2-5 слов по-русски (например: существительное, мужской род)", "grammar_uz": "та же метка на узбекском", "plural": "форма мн. числа с огласовками, если существительное, иначе null", "verb_forms": {"past":"...","present":"...","imperative":"...","masdar":"..."} с огласовками, если это глагол, иначе null}\n\n' +
-    "Будь предельно краток. Если слово не удаётся однозначно перевести, выбери самый вероятный и распространённый вариант."
-  );
-}
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--paper);
+    color: var(--ink);
+  }
 
-async function callClaude(prompt, maxTokens) {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": API_KEY,
-      "anthropic-version": "2023-06-01",
+  html {
+    scroll-padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  body {
+    font-family: "Alegreya", Georgia, "Times New Roman", serif;
+    font-size: 17px;
+    line-height: 1.5;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    min-height: 100%;
+  }
+
+  .wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 28px 20px 64px;
+  }
+
+  /* ---------- header ---------- */
+
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 28px;
+    gap: 16px;
+  }
+
+  .mark {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+
+  .mark .ar {
+    font-family: "Amiri", serif;
+    font-size: 27px;
+    color: var(--rubric);
+    line-height: 1;
+  }
+
+  .mark .name {
+    font-family: "Alegreya Sans", sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.02em;
+    color: var(--ink);
+  }
+
+  .lang-toggle {
+    display: flex;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .lang-toggle button {
+    font-family: "Alegreya Sans", sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    background: transparent;
+    border: none;
+    color: var(--ink-soft);
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+
+  .lang-toggle button + button {
+    border-left: 1px solid var(--rule);
+  }
+
+  .lang-toggle button[aria-pressed="true"] {
+    background: var(--rubric);
+    color: var(--paper-raised);
+  }
+
+  .lang-toggle button:focus-visible,
+  button:focus-visible,
+  textarea:focus-visible,
+  .word:focus-visible {
+    outline: 2px solid var(--teal);
+    outline-offset: 2px;
+  }
+
+  /* ---------- tagline ---------- */
+
+  .tagline {
+    font-size: 17px;
+    color: var(--ink-soft);
+    max-width: 46ch;
+    margin: 0 0 30px;
+  }
+
+  /* ---------- input ---------- */
+
+  .field-label {
+    font-family: "Alegreya Sans", sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-soft);
+    margin-bottom: 8px;
+  }
+
+  textarea {
+    width: 100%;
+    min-height: 110px;
+    resize: vertical;
+    font-family: "Amiri", serif;
+    font-size: 24px;
+    line-height: 1.9;
+    direction: rtl;
+    color: var(--ink);
+    background: var(--paper-raised);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 16px 18px;
+  }
+
+  textarea::placeholder {
+    color: var(--ink-soft);
+    opacity: 0.55;
+  }
+
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 14px;
+  }
+
+  .btn-primary {
+    font-family: "Alegreya Sans", sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--paper-raised);
+    background: var(--rubric);
+    border: none;
+    border-radius: 5px;
+    padding: 11px 22px;
+    cursor: pointer;
+  }
+
+  .btn-primary:hover { background: var(--rubric-soft); }
+  .btn-primary:disabled { opacity: 0.55; cursor: default; }
+
+  .status {
+    font-family: "Alegreya Sans", sans-serif;
+    font-size: 14px;
+    color: var(--ink-soft);
+    font-style: italic;
+  }
+
+  .error-box {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border: 1px solid var(--rubric-soft);
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--rubric) 10%, var(--paper-raised));
+    color: var(--ink);
+    font-size: 14.5px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .error-box button {
+    font-family: "Alegreya Sans", sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    background: transparent;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    color: var(--ink);
+    padding: 5px 10px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  /* ---------- result ---------- */
+
+  .result-section {
+    margin-top: 40px;
+    padding-top: 26px;
+    border-top: 1px solid var(--rule);
+  }
+
+  .result-hint {
+    font-family: "Alegreya Sans", sans-serif;
+    font-size: 13px;
+    color: var(--ink-soft);
+    margin-bottom: 14px;
+  }
+
+  .summary-card {
+    background: color-mix(in srgb, var(--teal) 8%, var(--paper-raised));
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 18px 20px;
+    margin-bottom: 22px;
+  }
+
+  .summary-row + .summary-row {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--rule);
+  }
+
+  .summary-row .k {
+    font-family: "Alegreya Sans", sans-serif;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--teal-soft);
+    margin-bottom: 5px;
+  }
+
+  .summary-row .v {
+    font-size: 18px;
+  }
+
+  .summary-row .v.ar {
+    font-family: "Amiri", serif;
+    font-size: 21px;
+    direction: rtl;
+    text-align: right;
+    line-height: 1.9;
+  }
+
+  .result-text {
+    font-family: "Amiri", serif;
+    font-size: 27px;
+    line-height: 2.5;
+    direction: rtl;
+    text-align: right;
+  }
+
+  .word-unit {
+    display: inline-block;
+    vertical-align: top;
+    text-align: center;
+    margin: 0 4px 20px;
+    max-width: 220px;
+  }
+
+  .word {
+    cursor: pointer;
+    border-radius: 3px;
+    padding: 2px 4px;
+    transition: background-color 0.15s ease;
+  }
+
+  .word:hover { background: color-mix(in srgb, var(--teal) 14%, transparent); }
+
+  .word.active {
+    background: color-mix(in srgb, var(--teal) 22%, transparent);
+  }
+
+  .tarkib {
+    display: block;
+    font-family: "Amiri", serif;
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--ink-soft);
+    direction: rtl;
+    margin-top: 3px;
+    white-space: normal;
+  }
+
+  .tashkeel { color: var(--rubric); }
+
+  /* ---------- detail card ---------- */
+
+  .detail-card {
+    margin-top: 22px;
+    background: var(--paper-raised);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 20px 22px;
+  }
+
+  .detail-word {
+    font-family: "Amiri", serif;
+    font-size: 32px;
+    direction: rtl;
+    margin-bottom: 4px;
+  }
+
+  .detail-pos {
+    font-family: "Alegreya Sans", sans-serif;
+    font-size: 12.5px;
+    color: var(--teal-soft);
+    margin-bottom: 14px;
+  }
+
+  .detail-row {
+    display: flex;
+    gap: 14px;
+    padding: 9px 0;
+    border-top: 1px solid var(--rule);
+  }
+
+  .detail-row:first-of-type { border-top: none; }
+
+  .detail-row .k {
+    font-family: "Alegreya Sans", sans-serif;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    width: 150px;
+    flex-shrink: 0;
+    padding-top: 2px;
+  }
+
+  .detail-row .v {
+    font-size: 17px;
+  }
+
+  .detail-row .v.ar {
+    font-family: "Amiri", serif;
+    font-size: 20px;
+    direction: rtl;
+  }
+
+  .verb-forms {
+    margin-top: 4px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    row-gap: 6px;
+    column-gap: 14px;
+  }
+
+  .verb-forms .k {
+    font-family: "Alegreya Sans", sans-serif;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    padding-top: 3px;
+  }
+
+  .verb-forms .v {
+    font-family: "Amiri", serif;
+    font-size: 19px;
+    direction: rtl;
+  }
+
+  /* ---------- dictionary ---------- */
+
+  .dict-section {
+    margin-top: 46px;
+    padding-top: 26px;
+    border-top: 1px solid var(--rule);
+  }
+
+  .dict-section h2 {
+    font-family: "Alegreya", serif;
+    font-weight: 700;
+    font-size: 20px;
+    margin: 0 0 4px;
+  }
+
+  .dict-hint {
+    font-family: "Alegreya Sans", sans-serif;
+    font-size: 13px;
+    color: var(--ink-soft);
+    margin-bottom: 14px;
+  }
+
+  .dict-row {
+    display: flex;
+    gap: 10px;
+  }
+
+  .dict-row input {
+    flex: 1;
+    font-family: "Alegreya", serif;
+    font-size: 17px;
+    color: var(--ink);
+    background: var(--paper-raised);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 11px 14px;
+  }
+
+  .btn-secondary {
+    font-family: "Alegreya Sans", sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--paper-raised);
+    background: var(--teal);
+    border: none;
+    border-radius: 5px;
+    padding: 0 20px;
+    cursor: pointer;
+  }
+
+  .btn-secondary:hover { background: var(--teal-soft); }
+  .btn-secondary:disabled { opacity: 0.55; cursor: default; }
+
+  .dict-result {
+    margin-top: 18px;
+  }
+
+  footer {
+    margin-top: 50px;
+    padding-top: 18px;
+    border-top: 1px solid var(--rule);
+    font-family: "Alegreya Sans", sans-serif;
+    font-size: 12.5px;
+    color: var(--ink-soft);
+  }
+
+  @media (max-width: 480px) {
+    .result-text { font-size: 23px; line-height: 2.3; }
+    textarea { font-size: 21px; }
+    .detail-row { flex-direction: column; gap: 3px; }
+    .detail-row .k { width: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="mark">
+      <span class="ar">حركات</span>
+      <span class="name" id="appName">Харакят</span>
+    </div>
+    <div class="lang-toggle" role="group" aria-label="Язык интерфейса">
+      <button type="button" id="btnRu" aria-pressed="true">RU</button>
+      <button type="button" id="btnUz" aria-pressed="false">UZ</button>
+    </div>
+  </header>
+
+  <p class="tagline" id="tagline"></p>
+
+  <div class="field-label" id="inputLabel"></div>
+  <textarea id="input" dir="rtl" lang="ar" placeholder="اكتب الجملة هنا"></textarea>
+
+  <div class="actions">
+    <button type="button" class="btn-primary" id="btnGo"></button>
+    <span class="status" id="status" hidden></span>
+  </div>
+
+  <div class="error-box" id="errorBox" hidden>
+    <span id="errorText"></span>
+    <button type="button" id="btnRetry"></button>
+  </div>
+
+  <div class="result-section" id="resultSection" hidden>
+    <div class="summary-card" id="summaryCard"></div>
+    <div class="result-hint" id="resultHint"></div>
+    <div class="result-text" id="resultText"></div>
+    <div class="detail-card" id="detailCard" hidden></div>
+  </div>
+
+  <div class="dict-section">
+    <h2 id="dictTitle"></h2>
+    <div class="dict-hint" id="dictHint"></div>
+    <div class="dict-row">
+      <input type="text" id="dictInput" autocomplete="off">
+      <button type="button" class="btn-secondary" id="dictBtn"></button>
+    </div>
+    <div class="dict-result detail-card" id="dictResult" hidden></div>
+  </div>
+
+  <footer id="footerNote"></footer>
+
+</div>
+
+<script>
+(function () {
+
+  const STR = {
+    ru: {
+      appName: "Harakat by Ibrokhim",
+      tagline: "Вставьте арабский текст без огласовок — приложение расставит харакят и покажет перевод на русский и узбекский, вместе с формами слова.",
+      inputLabel: "Арабский текст без огласовок",
+      button: "Расставить огласовки",
+      loading: "Обрабатываю текст…",
+      resultHint: "Нажмите на любое слово, чтобы увидеть перевод и разбор",
+      summaryTranslation: "Перевод текста",
+      summaryIrab: "Грамматический разбор",
+      translation: "Перевод",
+      grammar: "Грамматика",
+      plural: "Множественное число",
+      verbForms: "Формы глагола",
+      past: "Прошедшее время",
+      present: "Настоящее время",
+      imperative: "Повелительное наклонение",
+      masdar: "Масдар",
+      errorGeneric: "Не получилось обработать текст.",
+      errorEmpty: "Сначала введите арабский текст.",
+      errorServerConfig: "Сервер не настроен: не задан API-ключ.",
+      retry: "Повторить",
+      footer: "Рабочий прототип. Огласовки и перевод формируются автоматически и могут содержать ошибки.",
+      dictTitle: "Словарь",
+      dictLabel: "Введите слово на русском",
+      dictPlaceholder: "например: книга",
+      dictButton: "Найти",
+      dictHint: "Покажем слово на арабском с огласовками и краткой грамматикой",
+      dictNotFound: "Не удалось найти слово. Попробуйте переформулировать.",
     },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: maxTokens,
-      messages: [{ role: "user", content: prompt }],
-    }),
+    uz: {
+      appName: "Harakat by Ibrokhim",
+      tagline: "Harakatsiz arab matnini kiriting — ilova harakatlarni qo'yadi va rus, o'zbek tillariga tarjima qiladi, so'z shakllari bilan birga.",
+      inputLabel: "Harakatsiz arab matni",
+      button: "Harakatlarni qo'yish",
+      loading: "Matn qayta ishlanmoqda…",
+      resultHint: "Tarjima va tahlilni ko'rish uchun istalgan so'zga bosing",
+      summaryTranslation: "Matn tarjimasi",
+      summaryIrab: "Grammatik tahlil",
+      translation: "Tarjima",
+      grammar: "Grammatika",
+      plural: "Ko'plik shakli",
+      verbForms: "Fe'l shakllari",
+      past: "O'tgan zamon",
+      present: "Hozirgi-kelasi zamon",
+      imperative: "Buyruq mayli",
+      masdar: "Masdar",
+      errorGeneric: "Matnni qayta ishlab bo'lmadi.",
+      errorEmpty: "Avval arab matnini kiriting.",
+      errorServerConfig: "Server sozlanmagan: API kalit kiritilmagan.",
+      retry: "Qaytadan urinish",
+      footer: "Ishlaydigan prototip. Harakatlar va tarjima avtomatik yaratiladi va xatolar bo'lishi mumkin.",
+      dictTitle: "Lug'at",
+      dictLabel: "So'zni rus tilida kiriting",
+      dictPlaceholder: "masalan: kitob",
+      dictButton: "Qidirish",
+      dictHint: "Arab tilidagi shaklini harakat va qisqa grammatika bilan ko'rsatamiz",
+      dictNotFound: "So'z topilmadi. Boshqacha yozib ko'ring.",
+    },
+  };
+
+  let uiLang = "ru";
+  let lastWords = null;
+  let lastSummary = null;
+  const API_BASE = "https://harakat-app.onrender.com";
+
+  const el = {
+    appName: document.getElementById("appName"),
+    tagline: document.getElementById("tagline"),
+    inputLabel: document.getElementById("inputLabel"),
+    input: document.getElementById("input"),
+    btnGo: document.getElementById("btnGo"),
+    status: document.getElementById("status"),
+    errorBox: document.getElementById("errorBox"),
+    errorText: document.getElementById("errorText"),
+    btnRetry: document.getElementById("btnRetry"),
+    resultSection: document.getElementById("resultSection"),
+    summaryCard: document.getElementById("summaryCard"),
+    resultHint: document.getElementById("resultHint"),
+    resultText: document.getElementById("resultText"),
+    detailCard: document.getElementById("detailCard"),
+    footerNote: document.getElementById("footerNote"),
+    btnRu: document.getElementById("btnRu"),
+    btnUz: document.getElementById("btnUz"),
+    dictTitle: document.getElementById("dictTitle"),
+    dictHint: document.getElementById("dictHint"),
+    dictInput: document.getElementById("dictInput"),
+    dictBtn: document.getElementById("dictBtn"),
+    dictResult: document.getElementById("dictResult"),
+  };
+
+  function t(key) { return STR[uiLang][key]; }
+
+  function applyLang() {
+    document.documentElement.lang = uiLang;
+    el.appName.textContent = t("appName");
+    el.tagline.textContent = t("tagline");
+    el.inputLabel.textContent = t("inputLabel");
+    el.btnGo.textContent = t("button");
+    el.resultHint.textContent = t("resultHint");
+    el.footerNote.textContent = t("footer");
+    el.btnRetry.textContent = t("retry");
+    el.dictTitle.textContent = t("dictTitle");
+    el.dictHint.textContent = t("dictHint");
+    el.dictInput.placeholder = t("dictPlaceholder");
+    el.dictBtn.textContent = t("dictButton");
+    el.btnRu.setAttribute("aria-pressed", String(uiLang === "ru"));
+    el.btnUz.setAttribute("aria-pressed", String(uiLang === "uz"));
+    if (lastSummary) renderSummary();
+    if (lastWords) renderDetailIfOpen();
+  }
+
+  el.btnRu.addEventListener("click", () => { uiLang = "ru"; applyLang(); });
+  el.btnUz.addEventListener("click", () => { uiLang = "uz"; applyLang(); });
+
+  const TASHKEEL_RE_START = 0x064B;
+  const TASHKEEL_RE_END = 0x0653;
+
+  function renderWordHtml(surface) {
+    let out = "";
+    for (const ch of surface) {
+      const code = ch.codePointAt(0);
+      if ((code >= TASHKEEL_RE_START && code <= TASHKEEL_RE_END) || code === 0x0670) {
+        out += '<span class="tashkeel">' + ch + "</span>";
+      } else {
+        out += ch;
+      }
+    }
+    return out;
+  }
+
+  function renderSummary() {
+    if (!lastSummary) { el.summaryCard.innerHTML = ""; return; }
+    const translation = uiLang === "uz" ? lastSummary.translation_uz : lastSummary.translation_ru;
+    let html = "";
+    if (translation) {
+      html += '<div class="summary-row"><div class="k">' + t("summaryTranslation") + '</div><div class="v">' + translation + "</div></div>";
+    }
+    if (lastSummary.irab_summary) {
+      html += '<div class="summary-row"><div class="k">' + t("summaryIrab") + '</div><div class="v ar">' + lastSummary.irab_summary + "</div></div>";
+    }
+    el.summaryCard.innerHTML = html;
+  }
+
+  function renderResult(data) {
+    lastWords = data.words;
+    lastSummary = { translation_ru: data.translation_ru, translation_uz: data.translation_uz, irab_summary: data.irab_summary };
+    renderSummary();
+    el.resultText.innerHTML = "";
+    el.detailCard.hidden = true;
+    lastWords.forEach((w, i) => {
+      const unit = document.createElement("span");
+      unit.className = "word-unit";
+
+      const span = document.createElement("span");
+      span.className = "word";
+      span.tabIndex = 0;
+      span.dataset.index = String(i);
+      span.innerHTML = renderWordHtml(w.surface || "");
+      span.addEventListener("click", () => selectWord(i));
+      span.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectWord(i); }
+      });
+      unit.appendChild(span);
+
+      if (w.irab) {
+        const tarkib = document.createElement("span");
+        tarkib.className = "tarkib";
+        tarkib.textContent = w.irab;
+        unit.appendChild(tarkib);
+      }
+
+      el.resultText.appendChild(unit);
+    });
+    el.resultSection.hidden = false;
+  }
+
+  let selectedIndex = null;
+
+  function selectWord(i) {
+    selectedIndex = i;
+    document.querySelectorAll(".word").forEach((s) => s.classList.remove("active"));
+    const span = el.resultText.querySelector('.word[data-index="' + i + '"]');
+    if (span) span.classList.add("active");
+    renderDetailIfOpen();
+  }
+
+  function renderDetailIfOpen() {
+    if (selectedIndex === null || !lastWords) return;
+    const w = lastWords[selectedIndex];
+    if (!w) return;
+    let html = "";
+    html += '<div class="detail-word">' + renderWordHtml(w.surface || "") + "</div>";
+    html += '<div class="detail-row"><div class="k">' + t("translation") + '</div><div class="v">' + ((uiLang === "uz" ? w.translation_uz : w.translation_ru) || "—") + "</div></div>";
+    const grammarText = uiLang === "uz" ? w.grammar_uz : w.grammar_ru;
+    if (grammarText) {
+      html += '<div class="detail-row"><div class="k">' + t("grammar") + '</div><div class="v">' + grammarText + "</div></div>";
+    }
+    if (w.plural) {
+      html += '<div class="detail-row"><div class="k">' + t("plural") + '</div><div class="v ar">' + renderWordHtml(w.plural) + "</div></div>";
+    }
+    if (w.verb_forms) {
+      const vf = w.verb_forms;
+      html += '<div class="detail-row"><div class="k">' + t("verbForms") + '</div><div class="v">';
+      html += '<div class="verb-forms">';
+      if (vf.past) html += '<div class="k">' + t("past") + '</div><div class="v">' + renderWordHtml(vf.past) + "</div>";
+      if (vf.present) html += '<div class="k">' + t("present") + '</div><div class="v">' + renderWordHtml(vf.present) + "</div>";
+      if (vf.imperative) html += '<div class="k">' + t("imperative") + '</div><div class="v">' + renderWordHtml(vf.imperative) + "</div>";
+      if (vf.masdar) html += '<div class="k">' + t("masdar") + '</div><div class="v">' + renderWordHtml(vf.masdar) + "</div>";
+      html += "</div></div></div>";
+    }
+    el.detailCard.innerHTML = html;
+    el.detailCard.hidden = false;
+  }
+
+  function showError(msg) {
+    el.errorText.textContent = msg;
+    el.errorBox.hidden = false;
+  }
+
+  function hideError() {
+    el.errorBox.hidden = true;
+  }
+
+  async function run() {
+    const text = el.input.value.trim();
+    hideError();
+    if (!text) {
+      showError(t("errorEmpty"));
+      return;
+    }
+    el.btnGo.disabled = true;
+    el.status.hidden = false;
+    el.status.textContent = t("loading");
+
+    try {
+      const response = await fetch(API_BASE + "/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!response.ok) {
+        let code = "server_error";
+        try { code = (await response.json()).error || code; } catch (e) {}
+        throw { code };
+      }
+      const data = await response.json();
+      if (!data || !Array.isArray(data.words) || data.words.length === 0) {
+        throw { code: "malformed_response" };
+      }
+      renderResult(data);
+      selectedIndex = null;
+      el.detailCard.hidden = true;
+    } catch (e) {
+      const code = e && e.code;
+      if (code === "server_not_configured") {
+        showError(t("errorServerConfig"));
+      } else {
+        showError(t("errorGeneric"));
+      }
+    } finally {
+      el.btnGo.disabled = false;
+      el.status.hidden = true;
+    }
+  }
+
+  el.btnGo.addEventListener("click", run);
+  el.btnRetry.addEventListener("click", run);
+  el.input.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") run();
   });
 
-  if (!response.ok) {
-    const errText = await response.text();
-    console.error("Anthropic API error:", response.status, errText);
-    const err = new Error("upstream_error");
-    err.code = "upstream_error";
-    throw err;
-  }
+  async function runDict() {
+    const word = el.dictInput.value.trim();
+    if (!word) return;
+    el.dictBtn.disabled = true;
+    el.dictResult.hidden = true;
 
-  const data = await response.json();
-  const textBlock = (data.content || []).find((b) => b.type === "text");
-  if (!textBlock) {
-    const err = new Error("no_text_in_response");
-    err.code = "no_text_in_response";
-    throw err;
-  }
-
-  let cleaned = textBlock.text.trim();
-  cleaned = cleaned.replace(/^```json\s*/i, "").replace(/```$/, "").trim();
-
-  try {
-    return JSON.parse(cleaned);
-  } catch (e) {
-    console.error("Не удалось распарсить JSON от модели:", cleaned);
-    const err = new Error("invalid_json_from_model");
-    err.code = "invalid_json_from_model";
-    throw err;
-  }
-}
-
-app.post("/api/analyze", async (req, res) => {
-  const text = ((req.body && req.body.text) || "").trim();
-
-  if (!text) return res.status(400).json({ error: "empty_text" });
-  if (!API_KEY) return res.status(500).json({ error: "server_not_configured" });
-  if (text.length > 2000) return res.status(400).json({ error: "text_too_long" });
-
-  try {
-    const parsed = await callClaude(buildPrompt(text), 4000);
-    if (!Array.isArray(parsed.words)) {
-      return res.status(502).json({ error: "malformed_response" });
+    try {
+      const response = await fetch(API_BASE + "/api/dictionary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ word }),
+      });
+      if (!response.ok) throw new Error("not_ok");
+      const w = await response.json();
+      if (!w || !w.surface) throw new Error("empty");
+      let html = "";
+      html += '<div class="detail-word">' + renderWordHtml(w.surface) + "</div>";
+      html += '<div class="detail-row"><div class="k">' + t("translation") + '</div><div class="v">' + ((uiLang === "uz" ? w.translation_uz : w.translation_ru) || "—") + "</div></div>";
+      const g = uiLang === "uz" ? w.grammar_uz : w.grammar_ru;
+      if (g) html += '<div class="detail-row"><div class="k">' + t("grammar") + '</div><div class="v">' + g + "</div></div>";
+      if (w.plural) html += '<div class="detail-row"><div class="k">' + t("plural") + '</div><div class="v ar">' + renderWordHtml(w.plural) + "</div></div>";
+      if (w.verb_forms) {
+        const vf = w.verb_forms;
+        html += '<div class="detail-row"><div class="k">' + t("verbForms") + '</div><div class="v"><div class="verb-forms">';
+        if (vf.past) html += '<div class="k">' + t("past") + '</div><div class="v">' + renderWordHtml(vf.past) + "</div>";
+        if (vf.present) html += '<div class="k">' + t("present") + '</div><div class="v">' + renderWordHtml(vf.present) + "</div>";
+        if (vf.imperative) html += '<div class="k">' + t("imperative") + '</div><div class="v">' + renderWordHtml(vf.imperative) + "</div>";
+        if (vf.masdar) html += '<div class="k">' + t("masdar") + '</div><div class="v">' + renderWordHtml(vf.masdar) + "</div>";
+        html += "</div></div></div>";
+      }
+      el.dictResult.innerHTML = html;
+    } catch (e) {
+      el.dictResult.innerHTML = '<div class="detail-row"><div class="v">' + t("dictNotFound") + "</div></div>";
+    } finally {
+      el.dictResult.hidden = false;
+      el.dictBtn.disabled = false;
     }
-    res.json(parsed);
-  } catch (e) {
-    console.error(e);
-    res.status(502).json({ error: e.code || "server_error" });
   }
-});
 
-app.post("/api/dictionary", async (req, res) => {
-  const word = ((req.body && req.body.word) || "").trim();
+  el.dictBtn.addEventListener("click", runDict);
+  el.dictInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") runDict();
+  });
 
-  if (!word) return res.status(400).json({ error: "empty_word" });
-  if (!API_KEY) return res.status(500).json({ error: "server_not_configured" });
-  if (word.length > 100) return res.status(400).json({ error: "word_too_long" });
+  applyLang();
 
-  try {
-    const parsed = await callClaude(buildDictPrompt(word), 1000);
-    if (!parsed.surface) {
-      return res.status(502).json({ error: "malformed_response" });
-    }
-    res.json(parsed);
-  } catch (e) {
-    console.error(e);
-    res.status(502).json({ error: e.code || "server_error" });
-  }
-});
-
-app.get("/health", (req, res) => res.json({ ok: true }));
-
-app.listen(PORT, () => {
-  console.log(`Сервер Harakat запущен на порту ${PORT}`);
-});
+})();
+</script>
+</body>
+</html>
