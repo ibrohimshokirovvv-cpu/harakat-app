@@ -1,8 +1,7 @@
 services:
   - type: web
     name: harakat-backend
-    runtime: node
-    rootDir: backend
+    env: node
     plan: free
     buildCommand: npm install
     startCommand: npm start
